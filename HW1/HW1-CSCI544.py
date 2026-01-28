@@ -44,7 +44,7 @@ class SentimentAnalyzer:
         self.lemmatizer = WordNetLemmatizer()
         
     def load_data(self):
-        self.df = pd.read_csv(self.data_path, sep='\t', on_bad_lines='skip', compression='gzip', low_memory=False)
+        self.df = pd.read_csv(self.data_path, sep='\t', on_bad_lines='skip', low_memory=False)
         self.df = self.df[['review_body', 'star_rating']]
         self.df['star_rating'] = pd.to_numeric(self.df['star_rating'], errors='coerce')
         self.df.dropna(subset=['review_body', 'star_rating'], inplace=True)
@@ -103,10 +103,19 @@ class SentimentAnalyzer:
         lemmatized = [self.lemmatizer.lemmatize(word, self.get_wordnet_pos(pos)) 
                       for word, pos in pos_tags]
         return ' '.join(lemmatized)
-
-    def remove_stopwords(self, text):
-        """Remove stopwords from text"""
+    
+    def remove_stopwords(text):
+        """Remove stopwords but keep negation words"""
         stop_words = set(stopwords.words('english'))
+
+        # CRITICAL: Keep negation words for sentiment analysis
+        negations = {
+            'no', 'not', 'nor', 'never', 'neither', 'nobody', 'nothing', 
+            'nowhere', 'none', 'hardly', 'scarcely', 'barely'
+        }
+        # Remove negation words from stopwords list
+        stop_words = stop_words - negations
+
         words = text.split()
         filtered = [word for word in words if word not in stop_words]
         return ' '.join(filtered)
