@@ -381,7 +381,7 @@ class SentimentAnalyzer:
             print(f"{model_name} Testing F1-score: {test_f1:.4f}")
 
 if __name__ == "__main__":
-    analyzer = SentimentAnalyzer(r'data/amazon_reviews_us_Office_Products_v1_00.tsv.gz')
+    analyzer = SentimentAnalyzer(r'data.tsv')
     analyzer.load_data()
     analyzer.relabel_ratings()
     analyzer.clean_and_preprocess()
