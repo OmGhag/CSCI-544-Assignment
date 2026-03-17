@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
+
 """
 CSCI 544 - Homework 2: Sentiment Analysis
-Author: Om Ghatiyali
-
-Simple script to run all homework experiments.
-Generates 16 accuracy values across different models.
+Python Version: 3.12.3
 """
 
 import pandas as pd
@@ -20,6 +17,11 @@ import nltk
 from nltk.corpus import stopwords, wordnet
 from nltk.stem import WordNetLemmatizer
 from nltk import pos_tag
+# Download NLTK data
+nltk.download('wordnet', quiet=True)
+nltk.download('omw-1.4', quiet=True)
+nltk.download('stopwords', quiet=True)
+nltk.download('averaged_perceptron_tagger_eng', quiet=True)
 
 # Gensim
 import gensim.downloader as api
@@ -48,10 +50,10 @@ torch.manual_seed(RANDOM_STATE)
 # ============================================================================
 
 # Paths
-DATA_PATH = r'/home/omghag/CSCI-544-Assignment/HW2/data/amazon_reviews_us_Office_Products_v1_00.tsv.gz'
+DATA_PATH = r'./data.tsv'
 
 # Dataset settings
-DATASET_SIZE = 250000
+DATASET_SIZE = 250000  # 50K per star rating (1-5)
 TEST_SIZE = 0.2
 
 # Training settings
@@ -69,13 +71,7 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 # ============================================================================
 
 class TextPreprocessor:
-    def __init__(self):
-        # Download NLTK data
-        nltk.download('wordnet', quiet=True)
-        nltk.download('omw-1.4', quiet=True)
-        nltk.download('stopwords', quiet=True)
-        nltk.download('averaged_perceptron_tagger_eng', quiet=True)
-        
+    def __init__(self):        
         self.lemmatizer = WordNetLemmatizer()
         self.stop_words = set(stopwords.words('english'))
         
@@ -376,35 +372,128 @@ def main():
     df.dropna(subset=['review_body', 'star_rating'], inplace=True)
     print(f"After cleaning: {len(df):,}")
     
-    # Create labels
-    def rating_to_label(rating):
-        if rating <= 2:
-            return 1  # Negative
-        elif rating == 3:
-            return 2  # Neutral
-        else:
-            return 3  # Positive
+    # Create balanced dataset by STAR RATING (not sentiment class)
+    # 250K total: 50K samples per star rating (1, 2, 3, 4, 5)
+    print("\nCreating balanced dataset by star rating...")
+    print("Requirement: 50K samples per star rating (1-5)")
     
-    df['label'] = df['star_rating'].apply(rating_to_label)
-    
-    # Create balanced dataset
-    print("\nCreating balanced dataset...")
-    samples_per_class = 83334
+    samples_per_rating = 50000
     df_balanced = pd.concat([
-        df[df['label'] == 1].sample(n=samples_per_class, random_state=RANDOM_STATE),
-        df[df['label'] == 2].sample(n=samples_per_class, random_state=RANDOM_STATE),
-        df[df['label'] == 3].sample(n=samples_per_class, random_state=RANDOM_STATE)
+        df[df['star_rating'] == 1].sample(n=samples_per_rating, random_state=RANDOM_STATE),
+        df[df['star_rating'] == 2].sample(n=samples_per_rating, random_state=RANDOM_STATE),
+        df[df['star_rating'] == 3].sample(n=samples_per_rating, random_state=RANDOM_STATE),
+        df[df['star_rating'] == 4].sample(n=samples_per_rating, random_state=RANDOM_STATE),
+        df[df['star_rating'] == 5].sample(n=samples_per_rating, random_state=RANDOM_STATE)
     ], ignore_index=True)
     
-    print(f"Balanced dataset size: {len(df_balanced):,}")
+    # Create sentiment labels from ratings
+    # Rating > 3: Positive (class 1)
+    # Rating < 3: Negative (class 2)
+    # Rating = 3: Neutral (class 3)
+    def rating_to_label(rating):
+        if rating > 3:
+            return 1  # Positive
+        elif rating < 3:
+            return 2  # Negative
+        else:
+            return 3  # Neutral
+    
+    df_balanced['label'] = df_balanced['star_rating'].apply(rating_to_label)
+    
+    print(f"\nBalanced dataset size: {len(df_balanced):,}")
+    
+    # Show star rating distribution
+    print("\n" + "-"*80)
+    print("STAR RATING DISTRIBUTION (should be 50K each):")
+    print(df_balanced['star_rating'].value_counts().sort_index())
+    
+    # Show sentiment class distribution
+    print("\nSENTIMENT CLASS DISTRIBUTION:")
+    label_counts = df_balanced['label'].value_counts().sort_index()
+    for label, count in label_counts.items():
+        label_name = {1: 'Positive', 2: 'Negative', 3: 'Neutral'}[label]
+        print(f"  Class {label} ({label_name}): {count:,} samples")
+    
+    print("\nNote: Classes are imbalanced by design (following PDF requirements)")
+    print("  - Positive (ratings 4-5): 100K samples")
+    print("  - Negative (ratings 1-2): 100K samples")
+    print("  - Neutral (rating 3): 50K samples")
+    
+    # Preprocessing statistics
+    print("\n" + "="*80)
+    print("TEXT PREPROCESSING PIPELINE")
+    print("="*80)
+    
+    # Save samples before preprocessing
+    samples_before = df_balanced['review_body'].head(3).tolist()
+    
+    # Before preprocessing statistics
+    print("\nBEFORE Preprocessing:")
+    print("-" * 80)
+    print(f"Sample reviews:")
+    for i, review in enumerate(samples_before[:2], 1):
+        print(f"  {i}. {review[:80]}...")
+    
+    avg_len_before = df_balanced['review_body'].str.len().mean()
+    median_len_before = df_balanced['review_body'].str.len().median()
+    min_len_before = df_balanced['review_body'].str.len().min()
+    max_len_before = df_balanced['review_body'].str.len().max()
+    
+    print(f"\nLength statistics:")
+    print(f"  Average: {avg_len_before:.2f} characters")
+    print(f"  Median:  {median_len_before:.0f} characters")
+    print(f"  Min:     {min_len_before} characters")
+    print(f"  Max:     {max_len_before} characters")
+    
+    # Word count before
+    word_counts_before = df_balanced['review_body'].str.split().str.len()
+    avg_words_before = word_counts_before.mean()
+    print(f"  Average words per review: {avg_words_before:.1f}")
     
     # Preprocess text
-    print("\nPreprocessing reviews...")
+    print("\nApplying preprocessing pipeline...")
+    print("   Steps: HTML removal -> Contraction expansion -> Lowercase ->")
+    print("          Special char removal -> Tokenization -> POS tagging ->")
+    print("          Lemmatization -> Single char removal")
+    
     preprocessor = TextPreprocessor()
     df_balanced['review_body'] = df_balanced['review_body'].apply(
         lambda x: preprocessor.preprocess(x)
     )
-    print("Preprocessing complete!")
+    
+    # After preprocessing statistics
+    print("\nAFTER Preprocessing:")
+    print("-" * 80)
+    print(f"Sample reviews:")
+    samples_after = df_balanced['review_body'].head(2).tolist()
+    for i, review in enumerate(samples_after, 1):
+        print(f"  {i}. {review[:80]}...")
+    
+    avg_len_after = df_balanced['review_body'].str.len().mean()
+    median_len_after = df_balanced['review_body'].str.len().median()
+    min_len_after = df_balanced['review_body'].str.len().min()
+    max_len_after = df_balanced['review_body'].str.len().max()
+    
+    print(f"\nLength statistics:")
+    print(f"  Average: {avg_len_after:.2f} characters")
+    print(f"  Median:  {median_len_after:.0f} characters")
+    print(f"  Min:     {min_len_after} characters")
+    print(f"  Max:     {max_len_after} characters")
+    
+    # Word count after
+    word_counts_after = df_balanced['review_body'].str.split().str.len()
+    avg_words_after = word_counts_after.mean()
+    print(f"  Average words per review: {avg_words_after:.1f}")
+    
+    # Comparison
+    print("\nREDUCTION:")
+    print("-" * 80)
+    char_reduction = ((avg_len_before - avg_len_after) / avg_len_before) * 100
+    word_reduction = ((avg_words_before - avg_words_after) / avg_words_before) * 100
+    print(f"  Character reduction: {char_reduction:.1f}%")
+    print(f"  Word reduction: {word_reduction:.1f}%")
+    print(f"  Original avg: {avg_len_before:.0f} chars -> Processed avg: {avg_len_after:.0f} chars")
+    print("\nPreprocessing complete!")
     
     # ========================================================================
     # Q2: WORD EMBEDDINGS
@@ -431,6 +520,201 @@ def main():
         seed=RANDOM_STATE
     )
     print(f"Custom vocabulary: {len(custom_w2v.wv.key_to_index):,}")
+    
+    # Word2Vec Analysis
+    print("\n" + "="*80)
+    print("WORD2VEC EMBEDDING ANALYSIS")
+    print("="*80)
+    
+    # ========================================================================
+    # PRETRAINED WORD2VEC ANALYSIS
+    # ========================================================================
+    print("\n" + "-"*80)
+    print("1. PRETRAINED Word2Vec (Google News 300)")
+    print("-"*80)
+    
+    # Test 1: King - Man + Woman
+    print("\nSemantic Similarity Test 1: 'king' - 'man' + 'woman' = ?")
+    try:
+        result = pretrained_w2v.most_similar(
+            positive=['king', 'woman'],
+            negative=['man'],
+            topn=5
+        )
+        print("Top 5 results:")
+        for word, score in result:
+            print(f"  {word:15} similarity: {score:.4f}")
+    except:
+        print("  Could not compute analogy")
+    
+    # Test 2: Excellent similarity
+    print("\nSemantic Similarity Test 2: Words similar to 'excellent'")
+    try:
+        similarity = pretrained_w2v.similarity('excellent', 'outstanding')
+        print(f"\nSimilarity(excellent, outstanding) = {similarity:.4f}")
+        print("\nWords most similar to 'excellent':")
+        for word, score in pretrained_w2v.most_similar('excellent', topn=5):
+            print(f"  {word:15} similarity: {score:.4f}")
+    except:
+        print("  Could not find 'excellent'")
+    
+    # ========================================================================
+    # CUSTOM WORD2VEC ANALYSIS
+    # ========================================================================
+    print("\n" + "-"*80)
+    print("2. CUSTOM Word2Vec (Trained on Reviews)")
+    print("-"*80)
+    
+    # Test domain-specific words
+    domain_words = ['product', 'quality', 'price', 'delivery', 'item']
+    
+    for test_word in domain_words[:2]:  # Test first 2
+        print(f"\nWords similar to '{test_word}':")
+        try:
+            similar = custom_w2v.wv.most_similar(test_word, topn=5)
+            for word, score in similar:
+                print(f"  {word:15} similarity: {score:.4f}")
+        except KeyError:
+            print(f"  '{test_word}' not in custom vocabulary")
+    
+    # ========================================================================
+    # SIMILARITY COMPARISON
+    # ========================================================================
+    print("\n" + "-"*80)
+    print("3. PRETRAINED vs CUSTOM COMPARISON")
+    print("-"*80)
+    
+    test_pairs = [
+        ('good', 'excellent'),
+        ('product', 'item'),
+        ('quality', 'price'),
+        ('fast', 'quick'),
+        ('love', 'like')
+    ]
+    
+    print(f"\n{'Word Pair':<25} {'Pretrained':<15} {'Custom':<15} {'Difference':<15}")
+    print("-" * 70)
+    
+    for word1, word2 in test_pairs:
+        try:
+            sim_pre = pretrained_w2v.similarity(word1, word2)
+        except KeyError:
+            sim_pre = 0.0
+        
+        try:
+            sim_cust = custom_w2v.wv.similarity(word1, word2)
+        except KeyError:
+            sim_cust = 0.0
+        
+        diff = sim_cust - sim_pre
+        diff_str = f"+{diff:.4f}" if diff >= 0 else f"{diff:.4f}"
+        print(f"{word1}-{word2:<20} {sim_pre:<15.4f} {sim_cust:<15.4f} {diff_str:<15}")
+    
+    # ========================================================================
+    # OUT-OF-VOCABULARY ANALYSIS
+    # ========================================================================
+    print("\n" + "-"*80)
+    print("4. OUT-OF-VOCABULARY (OOV) ANALYSIS")
+    print("-"*80)
+    
+    # Sample reviews for OOV analysis
+    sample_size = 1000
+    sample_reviews = df_balanced['review_body'].head(sample_size)
+    
+    print(f"\nAnalyzing {sample_size} reviews...")
+    
+    # Count OOV for pretrained
+    oov_count_pre = 0
+    total_words_pre = 0
+    for review in sample_reviews:
+        words = review.split()
+        total_words_pre += len(words)
+        for word in words:
+            if word not in pretrained_w2v.key_to_index:
+                oov_count_pre += 1
+    
+    # Count OOV for custom
+    oov_count_cust = 0
+    total_words_cust = 0
+    for review in sample_reviews:
+        words = review.split()
+        total_words_cust += len(words)
+        for word in words:
+            if word not in custom_w2v.wv.key_to_index:
+                oov_count_cust += 1
+    
+    oov_rate_pre = (oov_count_pre / total_words_pre) * 100
+    oov_rate_cust = (oov_count_cust / total_words_cust) * 100
+    
+    print(f"\nPretrained Word2Vec:")
+    print(f"  Total words analyzed: {total_words_pre:,}")
+    print(f"  OOV words: {oov_count_pre:,}")
+    print(f"  OOV rate: {oov_rate_pre:.2f}%")
+    print(f"  Coverage: {100 - oov_rate_pre:.2f}%")
+    
+    print(f"\nCustom Word2Vec:")
+    print(f"  Total words analyzed: {total_words_cust:,}")
+    print(f"  OOV words: {oov_count_cust:,}")
+    print(f"  OOV rate: {oov_rate_cust:.2f}%")
+    print(f"  Coverage: {100 - oov_rate_cust:.2f}%")
+    
+    improvement = oov_rate_pre - oov_rate_cust
+    print(f"\nCustom model has {improvement:.2f}% better coverage!")
+    
+    # ========================================================================
+    # VECTOR REPRESENTATION TEST
+    # ========================================================================
+    print("\n" + "-"*80)
+    print("5. VECTOR REPRESENTATION TEST")
+    print("-"*80)
+    
+    test_review = df_balanced['review_body'].iloc[0]
+    print(f"\nTest review: {test_review[:80]}...")
+    
+    # Generate vectors
+    def get_averaged_vector(review, model, is_custom):
+        words = review.split()
+        vectors = []
+        for word in words:
+            try:
+                vec = model.wv[word] if is_custom else model[word]
+                vectors.append(vec)
+            except KeyError:
+                pass
+        if len(vectors) > 0:
+            return np.mean(vectors, axis=0)
+        else:
+            return np.zeros(300)
+    
+    vec_pre = get_averaged_vector(test_review, pretrained_w2v, False)
+    vec_cust = get_averaged_vector(test_review, custom_w2v, True)
+    
+    print(f"\nPretrained vector: shape={vec_pre.shape}, first 5 values={vec_pre[:5]}")
+    print(f"Custom vector:     shape={vec_cust.shape}, first 5 values={vec_cust[:5]}")
+    
+    # Cosine similarity between the two representations
+    from numpy.linalg import norm
+    cosine_sim = np.dot(vec_pre, vec_cust) / (norm(vec_pre) * norm(vec_cust))
+    print(f"\nCosine similarity between representations: {cosine_sim:.4f}")
+    
+    # ========================================================================
+    # KEY OBSERVATIONS
+    # ========================================================================
+    print("\n" + "="*80)
+    print("KEY OBSERVATIONS:")
+    print("="*80)
+    print("\nPretrained embeddings:")
+    print("  - Larger vocabulary (3M words)")
+    print("  - Better for general language (king-queen analogy)")
+    print("  - Higher OOV rate on domain-specific text")
+    
+    print("\nCustom embeddings:")
+    print("  - Domain-specific vocabulary (13K words)")
+    print("  - Better coverage for review vocabulary")
+    print("  - Captures product-specific semantic relationships")
+    print("  - Lower OOV rate on our dataset")
+    
+    print("\nBoth will be tested in downstream tasks to compare performance!")
     
     # ========================================================================
     # Q3: SIMPLE MODELS
@@ -757,7 +1041,7 @@ def main():
     print(f"Ternary            {acc_cnn_ternary_pre:.4f}        {acc_cnn_ternary_cust:.4f}")
     
     print("\n" + "="*80)
-    print("✅ ALL 16 ACCURACY VALUES COMPLETE!")
+    print("ALL 16 ACCURACY VALUES COMPLETE!")
     print("="*80)
 
 
