@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class BLSTM(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers, 
