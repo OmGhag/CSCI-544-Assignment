@@ -93,7 +93,7 @@ def load_glove(glove_path, word2idx, embedding_dim=100):
     
     # step 2: load glove vectors into a dict
     glove_dict = {}
-    with gzip.open(glove_path, 'rt', encoding='utf-8') as f:
+    with gzip.open(glove_path, 'rt', encoding='utf-8', errors='ignore') as f:
         for line in f:
             # each line is: "word 0.1 0.2 ... 0.n"
             # parse it here
