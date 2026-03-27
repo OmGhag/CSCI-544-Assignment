@@ -13,8 +13,8 @@ def main():
     parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--glove_path', type=str, default='glove.6B.100d.gz')
     parser.add_argument('--model_path', type=str, required=True)
-    parser.add_argument('--dev_out', type=str, required=True)
-    parser.add_argument('--test_out', type=str, required=True)
+    parser.add_argument('--dev_out', type=str, default=None)
+    parser.add_argument('--test_out', type=str, default=None)
     parser.add_argument('--batch_size', type=int, default=32)
     args = parser.parse_args()
     
@@ -57,8 +57,7 @@ def main():
         ).to(device)
         model.load_state_dict(torch.load(args.model_path, map_location=device))
         
-        _, dev_preds, _ = evaluate(model, dev_loader, criterion)
-        _, test_preds, _ = evaluate(model, test_loader, criterion)
+        eval_fn = lambda loader: evaluate(model, loader, criterion)
     
     elif args.task == '2':
         embeddings = load_glove(args.glove_path, word2idx)
@@ -85,8 +84,7 @@ def main():
         ).to(device)
         model.load_state_dict(torch.load(args.model_path, map_location=device))
         
-        _, dev_preds, _ = evaluate2(model, dev_loader, criterion)
-        _, test_preds, _ = evaluate2(model, test_loader, criterion)
+        eval_fn = lambda loader: evaluate2(model, loader, criterion)
     
     elif args.task == 'bonus':
         embeddings = load_glove(args.glove_path, word2idx)
@@ -121,14 +119,21 @@ def main():
         ).to(device)
         model.load_state_dict(torch.load(args.model_path, map_location=device))
         
-        _, dev_preds, _ = evaluate_cnn(model, dev_loader, criterion)
-        _, test_preds, _ = evaluate_cnn(model, test_loader, criterion)
+        eval_fn = lambda loader: evaluate_cnn(model, loader, criterion)
     
     # write predictions
-    write_predictions(dev_sentences_raw, dev_preds, idx2tag, args.dev_out)
-    write_predictions(test_sentences_raw, test_preds, idx2tag, args.test_out)
-    print(f"Dev predictions written to {args.dev_out}")
-    print(f"Test predictions written to {args.test_out}")
+    if args.dev_out:
+        _, dev_preds, _ = eval_fn(dev_loader)
+        write_predictions(dev_sentences_raw, dev_preds, idx2tag, args.dev_out)
+        print(f"Dev predictions written to {args.dev_out}")
+    
+    if args.test_out:
+        _, test_preds, _ = eval_fn(test_loader)
+        write_predictions(test_sentences_raw, test_preds, idx2tag, args.test_out)
+        print(f"Test predictions written to {args.test_out}")
+    
+    if not args.dev_out and not args.test_out:
+        print("No output file specified! Use --dev_out or --test_out")
 
 if __name__ == '__main__':
     main()

@@ -21,6 +21,8 @@ def main():
     parser.add_argument('--factor', type=float, default=0.3)
     args = parser.parse_args()
     
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
     # ── common for all tasks ──
     train_sentences = read_data(f'{args.data_dir}/train')
     dev_sentences = read_data(f'{args.data_dir}/dev')
@@ -36,7 +38,7 @@ def main():
     dev_words, dev_tags = encode_data(dev_sentences, word2idx, tag2idx)
     test_words, test_tags = encode_data(test_sentences, word2idx, tag2idx)
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
     
     
     # ── task specific ──
@@ -88,7 +90,7 @@ def main():
                         print("Early stopping!")
                         break
                     
-            model.load_state_dict(torch.load('blstm.pt'))
+            model.load_state_dict(torch.load('blstm1.pt'))
             print("Best model loaded!")
             
     elif args.task == '2':
@@ -183,11 +185,11 @@ def main():
             cap_embedding_dim=8,
             char_vocab_size=len(char2idx),
             char_embedding_dim=30,
-            char_cnn_out_channels=120,
+            char_cnn_out_channels=128,
             char_cnn_kernel_size=5
          ).to(device)
         
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weight_decay)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=args.patience, factor=args.factor)
         criterion = nn.CrossEntropyLoss(ignore_index=0)
         
